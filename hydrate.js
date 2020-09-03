@@ -5,7 +5,7 @@ const { useEffect } = require('react')
 
 module.exports = function hydrate(
   { compiledSource, renderedOutput, scope = {} },
-  { components } = {}
+  { components, provider } = {}
 ) {
   // our default result is the server-rendered output
   // we get this in front of users as quickly as possible
@@ -55,9 +55,21 @@ module.exports = function hydrate(
         hydratedFn
       )
 
+      let result = wrappedWithMdxProvider
+
+      // if there was a custom provider passed in, we also wrap with this
+      if (provider) {
+        const wrappedWithCustomProvider = React.createElement(
+          provider.component,
+          provider.props || {},
+          wrappedWithMdxProvider
+        )
+        result = wrappedWithCustomProvider
+      }
+
       // finally, set the the output as the new result so that react will re-render for us
       // and cancel the idle callback since we don't need it anymore
-      setResult(wrappedWithMdxProvider)
+      setResult(result)
       window.cancelIdleCallback(handle)
     })
   }, [compiledSource])

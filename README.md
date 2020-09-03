@@ -31,18 +31,20 @@ renderToString(
   source: String,
   options?: {
     // the `name` is how you will invoke the component in your mdx
-    components: { name: React.ComponentType },
+    components?: { name: React.ComponentType },
     // mdx's available options at time of writing
     // pulled directly from https://github.com/mdx-js/mdx/blob/master/packages/mdx/index.js
-    mdxOptions: {
+    mdxOptions?: {
       remarkPlugins: []any,
       rehypePlugins: []any,
       hastPlugins: []any,
       compilers: []any,
       filepath: String
     },
+    // a provider that will be wrapped around your mdx component
+    provider?: { component: React.ProviderType, props: { [key:string]: any } },
     // variable names and values which can be consumed by components
-    scope: { [key:string]: any }
+    scope?: { [key:string]: any }
   }
 )
 ```
@@ -51,9 +53,10 @@ renderToString(
 hydrate(
   // the direct return value of `renderToString`
   source: CompiledMdxSourceType,
-  // should be the exact same components that were passed to renderToString
+  // should be the exact same components/provider that were passed to renderToString
   options?: {
-    components: { name: React.ComponentType }
+    components?: { name: React.ComponentType },
+    provider?: { component: React.ProviderType, props: { [key:string]: any } },
   }
 )
 ```
@@ -84,8 +87,16 @@ While it may seem strange to see these two in the same file, this is one of the 
 
 Let's break down each function:
 
-- `renderToString(source: string, components: object, options?: object, scope?: object)` - This function consumes a string of mdx along with any components it utilizes in the format `{ ComponentName: ActualComponent }`. It also can optionally be passed options which are [passed directly to mdx](https://mdxjs.com/advanced/plugins), and a scope object that can be included in the mdx scope. The function returns an object that is intended to be passed into `hydrate` directly.
-- `hydrate(source: object, components: object)` - This function consumes the output of `renderToString` as well as the same components argument as `renderToString`. Its result can be rendered directly into your component. This function will initially render static content, and hydrate it when the browser isn't busy with higher priority tasks.
+- `renderToString(source: string, options?: object)` - This function consumes a string of mdx along with a variety of potential options, detailed below:
+
+  - `components`: Components to be made available in the mdx template, in the format `{ ComponentName: ActualComponent }`
+  - `mdxOptions`: [Passed directly to mdx](https://mdxjs.com/advanced/plugins)
+  - `provider`: A custom provider to wrap your mdx, in the format `{ component: Example.Provider, props: { value: 'xxx' } }`
+  - `scope`: An object that will be made available for use as props to components.
+
+  The function returns an object that is intended to be passed into `hydrate` directly.
+
+- `hydrate(source: object, options?: object)` - This function consumes the output of `renderToString` as well as optionally `provider` and/or `scope`, in the exact same form, if either/both wwre provided to `renderToString`. Its result can be rendered directly into your component. This function will initially render static content, and hydrate it when the browser isn't busy with higher priority tasks.
 
 ### Frontmatter & Custom Processing
 
@@ -124,6 +135,41 @@ Some **mdx** text, with a component <Test name={title}/>
 ```
 
 Nice and easy - since we get the content as a string originally and have full control, we can run any extra custom processing needed before passing it into `renderToString`, and easily append extra data to the return value from `getStaticProps` without issue.
+
+### Using Providers
+
+If any of the components in your MDX file require access to the values from a provider, you need special handling for this. Remember, this library treats your mdx content as _data provided to your page_, not as a page itself, so providers in your normal scope will not naturally wrap its results.
+
+Let's look at an example of using an auth0 provider, so that you could potentially customize some of your mdx components to the user viewing them.
+
+```jsx
+import { Auth0Provider } from '@auth0/auth0-react'
+import renderToString from 'next-mdx-remote/render-to-string'
+import hydrate from 'next-mdx-remote/hydrate'
+import Test from '../components/test'
+
+const components = { Test }
+
+// here, we build a provider config object
+const provider = {
+  component: Auth0Provider,
+  props: { domain: 'example.com', clientId: 'xxx', redirectUri: 'xxx' },
+}
+
+export default function TestPage({ source }) {
+  const content = hydrate(source, { components, provider }) // <- add the provider here
+  return <div className="wrapper">{content}</div>
+}
+
+export async function getStaticProps() {
+  // mdx text - can be from a local file, database, anywhere
+  const source = 'Some **mdx** text, with a component <Test />'
+  const mdxSource = await renderToString(source, { components, provider }) // <- add it here as well
+  return { props: { source: mdxSource } }
+}
+```
+
+That's it! The provider will be wrapped around your MDX page when hydrated and you will be able to be able to access any of its values from within your components. For an example using a custom provider, check out the test suite.
 
 ### Caveats
 

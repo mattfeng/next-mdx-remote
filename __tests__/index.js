@@ -17,7 +17,7 @@ test('rehydrates correctly in browser', () => {
 
   // server renders correctly
   expect(result).toMatch(
-    '<h1>foo</h1><span><h1>Headline</h1><p>hello <!-- -->jeff</p><button>Count: <!-- -->0</button><p>Some <strong class="custom-strong">markdown</strong> content</p><div class="alert alert-warning g-type-body" role="alert"><p>Alert</p></div></span>'
+    '<h1>foo</h1><span><h1>Headline</h1><p>hello <!-- -->jeff</p><button>Count: <!-- -->0</button><p class="context">Context value: &quot;<!-- -->foo<!-- -->&quot;</p><p>Some <strong class="custom-strong">markdown</strong> content</p><div class="alert alert-warning g-type-body" role="alert"><p>Alert</p></div></span>'
   )
   // hydrates correctly
   let browser, server
@@ -34,13 +34,17 @@ test('rehydrates correctly in browser', () => {
       await page.waitFor(() => {
         return document.querySelector('button').innerText !== 'Count: 0'
       })
-      // pull the text for a test confirm
-      const buttonCount = page.$eval('button', (el) => el.innerText)
-      resolve(buttonCount)
+
+      // pull text for elements we're testing hydrate on
+      const contextElementText = page.$eval('.context', (el) => el.innerText)
+      const buttonText = page.$eval('button', (el) => el.innerText)
+
+      resolve(Promise.all([buttonText, contextElementText]))
     })
     await page.goto('http://localhost:1235', { waitUntil: 'domcontentloaded' })
-  }).then(async (buttonText) => {
+  }).then(async ([buttonText, contextElementText]) => {
     expect(buttonText).not.toEqual('Count: 0')
+    expect(contextElementText).toEqual('Context value: "foo"')
 
     // close the browser and dev server
     await browser.close()
@@ -81,6 +85,25 @@ test('renderToString with scope', async () => {
     },
   })
   expect(result.renderedOutput).toEqual('<p>test</p>')
+})
+
+test('renderToString with custom provider', async () => {
+  const TestContext = React.createContext()
+
+  const result = await renderToString('<Test />', {
+    components: {
+      Test: () =>
+        React.createElement(TestContext.Consumer, null, (value) =>
+          React.createElement('p', null, value)
+        ),
+    },
+    provider: {
+      component: TestContext.Provider,
+      props: { value: 'provider-value' },
+    },
+  })
+
+  expect(result.renderedOutput).toEqual('<p>provider-value</p>')
 })
 
 afterAll(async () => {
